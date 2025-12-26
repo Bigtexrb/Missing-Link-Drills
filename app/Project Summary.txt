@@ -1,0 +1,124 @@
+──────────────────────────────────────────────
+POOL‑DRILL APP SUMMARY – DEC 26 2025
+──────────────────────────────────────────────
+
+STRUCTURE OVERVIEW
+──────────────────
+your‑pool‑app/
+├── app/
+│   ├── page.js                ← Main program (handles modes, scoring, overlays)
+│   ├── ExpandedOverlay.js     ← Full‑screen drill card view, tip editing & scoring
+│   ├── HighScoresOverlay.js   ← Rolling averages & color‑coded improvement graph
+│   ├── RecentDrillsOverlay.js ← Shows last 10 drills played
+│   ├── HistoryOverlay.js      ← Game history list
+│   ├── components/
+│   │   ├── ModeButtons.js  ← Buttons for Solo, Team, Fast, All Drills, etc.
+│   │   ├── Scoreboard.js   ← Displays current score(s)
+│   │   └── FilterBar.js    ← Filters All‑Drills by point value
+│   └── utils.js            ← Scoring rules, card values, localStorage helpers
+└── pool‑tips‑backup.json     ← Backup file containing all drill tips
+──────────────────────────────────────────────
+
+
+MODES & LAYOUT
+──────────────
+• Solo – five random cards, self‑scoring.
+• Fast – three random cards, same rules.
+• Team – two sets of five, A vs B scores.
+• All Drills – shows all 52 cards w/ filter row (5/10/15/20/25 pt buttons).
+• Random Drill – loads a single card not played in last 10.
+• Recent Drills – overlay listing your last 10 drills with date/time.
+• High Scores – overlay showing averages for 30/90/120 days & 1 year,
+ plus a trend line (green = improving, red = decline).
+• Expanded Card View – opens when a card image is clicked.
+ Shows image, value, Average Make Rate, editable tip, and scoring buttons.
+
+──────────────────────────────────────────────
+SCORING LOGIC
+──────────────────────────────────────────────
+
+➤ Card Values
+1‑11 = 5 pts 12‑22 = 10 pts 23‑31 = 15 pts 32‑43 = 20 pts 44‑52 = 25 pts
+
+➤ Standard Card Rules
+• 1st Miss → no penalty (try again).
+• 2nd Miss → lose card value (–value) and stop.
+• Scratch → lose card value (–value) and stop.
+• Made on 1st Try → +value points.
+• Made on 2nd Try → +value – 5 points.
+• ONLY for 5‑point cards (#1‑11):
+ ‑ If you make 1st and 2nd back‑to‑back, you may shoot a 3rd.  
+ ‑ Three makes in a row = 20 points total for that card.  
+
+➤ Special Card #49 – “Three Ball Exercise”
+• 3 Shots = +25 pts
+• 4 Shots = +20 pts
+• >4 Shots = –10 pts
+• Scratch = –15 pts and –10 over‑four penalty (total –25 pts)
+• Separate buttons appear in Expanded View for these choices.
+
+──────────────────────────────────────────────
+TIP SYSTEM
+──────────────────────────────────────────────
+• Each card has its own editable tip field.
+• Click “Edit Tip” → type → “Save Tip”.
+• Saved locally in browser (localStorage key = pool‑tips).
+• Average Make Rate (%) shown for each card from lifetime stats.
+• To protect your work you exported a backup JSON file (pooled‑tips‑backup.json).  
+ Keep it safe in your project root or backed up on iCloud.  
+ Re‑import later if necessary by loading its contents back into localStorage.
+
+──────────────────────────────────────────────
+HOW TO USE
+──────────────────────────────────────────────
+1. Run dev server: npm run dev → open http://localhost:3000  
+2. Pick mode (Solo, Team, Fast, All Drills).  
+3. Click a card to open Expanded view → record Make / Miss / Scratch.  
+4. Edit and save tips as you go.  
+5. Check High Scores to see averages and trend line.  
+6. Use Recent Drills to revisit last sessions.  
+7. Export tips periodically to `pool‑tips‑backup.json`.
+
+──────────────────────────────────────────────
+NOTES / NEXT STEPS
+──────────────────────────────────────────────
+• Future idea: allow each player to log in so their tips and scores stay separate.
+• Could add cloud sync (Supabase / Firebase) for shared leaderboards.  
+• Add “Download Backup” button for one‑click tip exports.
+
+──────────────────────────────────────────────
+
+──────────────────────────────────────────────
+RESTORING TIPS BACKUP
+──────────────────────────────────────────────
+If you ever lose your tips or move to a new machine:
+
+1 Locate your backup file  
+ pool‑tips‑backup.json (saved in your project folder or iCloud).
+
+2 Run your app locally (`npm run dev` → http://localhost:3000).  
+
+3 Open the browser Developer Console:  
+ • Mac Chrome → Cmd + Option + J  
+ • Windows → Ctrl + Shift + J  
+
+4 Paste and run this snippet:
+ –––––
+ fetch("pool‑tips‑backup.json")
+  .then(r => r.json())
+  .then(data => {
+   localStorage.setItem("pool‑tips", JSON.stringify(data));
+   console.log("Tips restored — reload the page.");
+  });
+ –––––
+
+   Press Enter  
+ → Console shows “Tips restored”  
+ → Reload your browser tab  
+ → All tip text reappears on each drill card.
+
+ Notes
+• If the file is inside your project folder, ensure the path matches, e.g. “../pool‑tips‑backup.json”.  
+• LocalStorage data is unique per browser, so repeat these steps on any computer you use.
+
+──────────────────────────────────────────────
