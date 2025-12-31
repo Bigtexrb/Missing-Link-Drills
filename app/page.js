@@ -3,324 +3,299 @@
 import { useState, useEffect } from "react";
 import Card from "./Card";
 import ExpandedOverlay from "./ExpandedOverlay";
-import HighScoresOverlay from "./HighScoresOverlay";
-import HistoryOverlay from "./HistoryOverlay";
-import RecentDrillsOverlay from "./RecentDrillsOverlay";
-import TipsManagerOverlay from "./TipsManagerOverlay";
-import ModeButtons from "./components/ModeButtons";
 import Scoreboard from "./components/Scoreboard";
 import FilterBar from "./components/FilterBar";
+import ModeButtons from "./components/ModeButtons";
+import HighScoresOverlay from "./HighScoresOverlay";
+import RecentDrillsOverlay from "./RecentDrillsOverlay";
+import HistoryOverlay from "./HistoryOverlay";
+import TipsManagerOverlay from "./TipsManagerOverlay";
 import {
   randomCards,
-  getCardValue,
   loadScores,
   saveScores,
-  clearScores,
   computeCardScore,
-  logCardStat,
+  getCardValue,
+  loadTips,
+  saveTips,
 } from "./utils";
 
 const PLAYER_NAME_KEY = "pool-player-name";
+const RECENT_DRILLS_KEY = "recentDrills";
 
 export default function Page() {
-  /* ------------------------------------------------------------------
-     FILE STRUCTURE REFERENCE
-
-     app/page.js               → Main entry, modes, overlays, core state
-     app/components/ModeButtons.js   → Game mode buttons + Tips button
-     app/components/Scoreboard.js    → Displays current score(s)
-     app/components/FilterBar.js     → Filter for All‑Drills mode
-     app/TipsManagerOverlay.js       → Edit / export / import all tips
-     app/ExpandedOverlay.js          → Enlarged view with tip + % made
-     app/RecentDrillsOverlay.js      → Last 10 drills
-     app/HighScoresOverlay.js        → Rolling averages + trend
-     app/utils.js                    → Shared helpers & storage
-  ------------------------------------------------------------------ */
-
-  // ---------- State ----------
   const [mode, setMode] = useState("solo");
-  const [deal, setDeal] = useState({ teamA: [], teamB: [] });
-  const [soloCards, setSoloCards] = useState([]);
+  const [cards, setCards] = useState([]);
   const [attempts, setAttempts] = useState({});
-  const [playerName, setPlayerName] = useState("");
-  const [teamA, setTeamA] = useState("Team A");
-  const [teamB, setTeamB] = useState("Team B");
-  const [scores, setScores] = useState([]);
   const [expanded, setExpanded] = useState(null);
-  const [showHighScores, setShowHighScores] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showRecent, setShowRecent] = useState(false);
-  const [showTips, setShowTips] = useState(false);
+  const [scores, setScores] = useState([]);
+  const [playerName, setPlayerName] = useState("");
   const [pointFilter, setPointFilter] = useState(null);
+  const [showHighScores, setShowHighScores] = useState(false);
+  const [showRecentDrills, setShowRecentDrills] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showTips, setShowTips] = useState(false);
+  const [teamAName, setTeamAName] = useState("Team A");
+  const [teamBName, setTeamBName] = useState("Team B");
+  const [tips, setTips] = useState({});
+  const [sessionStartTime, setSessionStartTime] = useState(new Date().toISOString());
 
-  // ---------- Initialization ----------
   useEffect(() => {
-    const n = localStorage.getItem(PLAYER_NAME_KEY);
-    if (n) setPlayerName(n);
     setScores(loadScores());
-    startSolo(5);
+    setPlayerName(localStorage.getItem(PLAYER_NAME_KEY) || "");
+    setTeamAName(localStorage.getItem("team-a-name") || "Team A");
+    setTeamBName(localStorage.getItem("team-b-name") || "Team B");
+
+    // Load tips from backup if not present in localStorage
+    const existingTips = loadTips();
+    if (Object.keys(existingTips).length === 0) {
+      fetch("/pool-tips-backup.json")
+        .then((res) => res.json())
+        .then((data) => {
+          saveTips(data);
+          setTips(data);
+        })
+        .catch((err) => console.error("Failed to load backup tips:", err));
+    } else {
+      setTips(existingTips);
+    }
+
+    loadCardsForMode("solo");
   }, []);
 
-  // ---------- Helpers ----------
-  function logRecentDrill(id, mode) {
-    const key = "recentDrills";
-    const current = JSON.parse(localStorage.getItem(key) || "[]");
-    const entry = { id, mode, date: new Date().toISOString() };
-    const updated = [entry, ...current.filter((r) => r.id !== id)].slice(0, 10);
-    localStorage.setItem(key, JSON.stringify(updated));
-  }
-
-  function startSolo(n) {
-    setSoloCards(randomCards(n));
+  function loadCardsForMode(newMode) {
+    if (newMode === "solo") {
+      setCards(randomCards(5, 52));
+    } else if (newMode === "fast") {
+      setCards(randomCards(3, 52));
+    } else if (newMode === "team") {
+      setCards([...randomCards(5, 52), ...randomCards(5, 52)]);
+    } else if (newMode === "all") {
+      setCards(Array.from({ length: 52 }, (_, i) => i + 1));
+    } else if (newMode === "random") {
+      const recent = JSON.parse(localStorage.getItem(RECENT_DRILLS_KEY) || "[]");
+      const recentIds = new Set(recent.slice(0, 10).map(r => r.id));
+      const available = Array.from({ length: 52 }, (_, i) => i + 1)
+        .filter(id => !recentIds.has(id));
+      if (available.length > 0) {
+        const randomId = available[Math.floor(Math.random() * available.length)];
+        setCards([randomId]);
+      } else {
+        setCards([Math.floor(Math.random() * 52) + 1]);
+      }
+    }
     setAttempts({});
-    setMode(n === 3 ? "fast" : "solo");
+    setSessionStartTime(new Date().toISOString());
   }
 
-  function startTeam() {
-    const cards = randomCards(10);
-    setDeal({ teamA: cards.slice(0, 5), teamB: cards.slice(5, 10) });
-    setAttempts({});
-    setMode("team");
-  }
-
-  function startAll() {
-    setSoloCards(Array.from({ length: 52 }, (_, i) => i + 1));
-    setAttempts({});
-    setMode("all");
-  }
-
-  function startRandomDrill() {
-    const key = "recentDrills";
-    const recent = JSON.parse(localStorage.getItem(key) || "[]");
-    const recentIds = recent.map((r) => r.id);
-    const available = Array.from({ length: 52 }, (_, i) => i + 1).filter(
-      (id) => !recentIds.includes(id)
-    );
-    const pool =
-      available.length > 0
-        ? available
-        : Array.from({ length: 52 }, (_, i) => i + 1);
-    const randomId = pool[Math.floor(Math.random() * pool.length)];
-    logRecentDrill(randomId, "random");
-    setMode("solo");
-    setSoloCards([randomId]);
-    setAttempts({});
-  }
-
-  // ---------- Attempts & Scoring ----------
-  function recordAttempt(team, id, result, e) {
-    if (e) e.stopPropagation();
-    const key = `${team}-${id}`;
+  function recordAttempt(team, id, result) {
     setAttempts((prev) => {
-      const hist = prev[key]?.history || [];
-      if (prev[key]?.done) return prev;
-      const res = result.toLowerCase();
-      logCardStat(id, res);
-      logRecentDrill(id, mode);
-      const newHist = [
-        ...hist,
-        res === "make" ? "Made" : res === "scratch" ? "Scratch" : "Miss",
-      ];
-      const done =
-        res === "miss" || res === "scratch" || newHist.length >= 3;
-      return { ...prev, [key]: { history: newHist, done } };
+      const key = `${team}-${id}`;
+      const entry = prev[key] || { history: [], done: false };
+
+      if (entry.done) return prev;
+
+      const nextHistory = [...entry.history, result];
+
+      // Logic to determine if drill should auto-close
+      const cardValue = getCardValue(id);
+      let isFinished = result === "scratch";
+
+      if (!isFinished) {
+        if (id === 49) {
+          // Card 49 has unique ending logic, but usually closes on Manual "Done"
+          // However, if we want to be consistent: it's a 3+ ball exercise.
+          // Let's stick to user's "2nd attempt closes that drill" for now.
+          if (nextHistory.length >= 2) isFinished = true;
+        } else if (cardValue === 5) {
+          // 5pt cards: 3rd attempt if first two were makes, else 2nd.
+          const makeCount = nextHistory.filter(h => h === "make").length;
+          if (nextHistory.length === 2 && makeCount < 2) isFinished = true;
+          if (nextHistory.length === 3) isFinished = true;
+        } else {
+          // Standard cards: 2nd attempt closes it.
+          if (nextHistory.length >= 2) isFinished = true;
+        }
+      }
+
+      if (isFinished) {
+        // Schedule markDone to run after state update
+        setTimeout(() => markDone(team, id, nextHistory), 0);
+      }
+
+      return {
+        ...prev,
+        [key]: {
+          ...entry,
+          history: nextHistory,
+          done: isFinished,
+        },
+      };
     });
   }
 
-  function markDone(team, id, e) {
-    if (e) e.stopPropagation();
-    logRecentDrill(id, mode);
-    setAttempts((p) => ({
-      ...p,
-      [`${team}-${id}`]: { ...(p[`${team}-${id}`] || {}), done: true },
+  function markDone(team, id, finalHistory = null) {
+    const key = `${team}-${id}`;
+    const entry = attempts[key];
+    const historyToUse = finalHistory || (entry ? entry.history : []);
+
+    // Check if already in scores for this session to avoid duplicates
+    // Actually, recordAttempt will prevent multiple calls since it checks entry.done.
+
+    const value = computeCardScore(historyToUse, id);
+
+    const newScore = {
+      id,
+      team,
+      score: value,
+      date: new Date().toISOString(),
+      mode,
+      name: mode === "team" ? (team === "A" ? teamAName : teamBName) : playerName || "Player",
+    };
+
+    const updated = [...scores, newScore];
+    setScores(updated);
+    saveScores(updated);
+
+    // Save to recent drills
+    const recent = JSON.parse(localStorage.getItem(RECENT_DRILLS_KEY) || "[]");
+    recent.unshift({ id, mode, date: new Date().toISOString() });
+    localStorage.setItem(RECENT_DRILLS_KEY, JSON.stringify(recent.slice(0, 10)));
+
+    setAttempts((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], done: true },
     }));
   }
 
-  function computeScore(team) {
-    let total = 0;
-    const keys = Object.keys(attempts).filter((k) =>
-      team === "solo" ? k.startsWith("solo-") : k.startsWith(team + "-")
-    );
-    keys.forEach((k) => {
-      const hist = attempts[k]?.history || [];
-      const value = getCardValue(parseInt(k.split("-")[1]));
-      total += computeCardScore(hist, value, mode).score;
-    });
-    return total;
+  function getFilteredCards() {
+    if (!pointFilter) return cards;
+    return cards.filter(id => getCardValue(id) === pointFilter);
   }
 
-  // ---------- High Scores ----------
-  function addHighScore(name, modeName, scoreVal) {
-    const safeName = typeof name === "string" ? name.trim() : "Unknown";
-    const entry = {
-      name: safeName || "Unknown",
-      mode: modeName,
-      score: scoreVal,
-      date: new Date().toISOString(),
-    };
-    const updated = [entry, ...scores];
-    saveScores(updated);
-    setScores(updated);
+  function getScoreForTeam(team) {
+    return Object.entries(attempts)
+      .filter(([key]) => key.startsWith(`${team}-`))
+      .reduce((sum, [key, entry]) => {
+        const id = parseInt(key.split("-")[1]);
+        return sum + computeCardScore(entry.history, id);
+      }, 0);
   }
 
-  const soloFinished = () =>
-    soloCards.length > 0 &&
-    soloCards.every((id) => attempts[`solo-${id}`]?.done);
+  const sessionTotal = Object.entries(attempts).reduce((sum, [key, entry]) => {
+    const id = parseInt(key.split("-")[1]);
+    return sum + computeCardScore(entry.history, id);
+  }, 0);
 
-  useEffect(() => {
-    if ((mode === "solo" || mode === "fast") && soloFinished()) {
-      addHighScore(playerName, mode, computeScore("solo"));
-    }
-  }, [attempts]);
+  const filteredCards = getFilteredCards();
 
-  // ---------- Render ----------
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-4">
-      {/* ---------- Header ---------- */}
-      <div className="text-center mb-4">
-        <h1 className="text-3xl font-bold text-emerald-400">
-          Missing Link Drills
-        </h1>
-        <p className="text-zinc-400 text-sm">
-          from the Billiard Learning Center
-        </p>
-      </div>
-
-      {/* ---------- Name Inputs ---------- */}
-      <div className="flex flex-wrap justify-center gap-3 mb-4">
-        {(mode === "solo" || mode === "fast") && (
-          <>
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="Player Name"
-              className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-center min-w-[200px]"
-            />
-            <button
-              onClick={() =>
-                localStorage.setItem(PLAYER_NAME_KEY, playerName || "")
-              }
-              className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-semibold"
-            >
-              Save Name
-            </button>
-          </>
-        )}
-
-        {mode === "team" && (
-          <>
-            <input
-              type="text"
-              value={teamA}
-              onChange={(e) => setTeamA(e.target.value)}
-              placeholder="Team A"
-              className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-center min-w-[160px]"
-            />
-            <input
-              type="text"
-              value={teamB}
-              onChange={(e) => setTeamB(e.target.value)}
-              placeholder="Team B"
-              className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-center min-w-[160px]"
-            />
-          </>
-        )}
-      </div>
-
-      {/* ---------- Mode Buttons ---------- */}
+    <main className="p-4 max-w-7xl mx-auto text-white">
       <ModeButtons
         mode={mode}
-        onSolo={() => startSolo(5)}
-        onTeam={startTeam}
-        onFast={() => startSolo(3)}
-        onAll={startAll}
-        onRandom={startRandomDrill}
-        onRecent={() => setShowRecent(true)}
-        onTips={() => setShowTips(true)}
+        onSolo={() => {
+          setMode("solo");
+          loadCardsForMode("solo");
+        }}
+        onTeam={() => {
+          setMode("team");
+          loadCardsForMode("team");
+        }}
+        onFast={() => {
+          setMode("fast");
+          loadCardsForMode("fast");
+        }}
+        onAll={() => {
+          setMode("all");
+          loadCardsForMode("all");
+        }}
+        onRandom={() => {
+          setMode("random");
+          loadCardsForMode("random");
+        }}
+        onRecent={() => setShowRecentDrills(true)}
         onHighScores={() => setShowHighScores(true)}
         onHistory={() => setShowHistory(true)}
+        onTips={() => setShowTips(true)}
       />
 
-      {/* ---------- Scoreboard ---------- */}
+      {mode === "all" && (
+        <FilterBar
+          pointFilter={pointFilter}
+          setPointFilter={(val) => {
+            setPointFilter(val);
+            setSessionStartTime(new Date().toISOString());
+            setAttempts({});
+          }}
+        />
+      )}
+
       <Scoreboard
         mode={mode}
-        teamA={teamA}
-        teamB={teamB}
-        scoreA={computeScore("A")}
-        scoreB={computeScore("B")}
+        teamA={teamAName}
+        teamB={teamBName}
+        scoreA={mode === "team" ? getScoreForTeam("A") : sessionTotal}
+        scoreB={mode === "team" ? getScoreForTeam("B") : 0}
         playerName={playerName}
+        onPlayerNameChange={(name) => {
+          setPlayerName(name);
+          localStorage.setItem(PLAYER_NAME_KEY, name);
+        }}
+        onTeamANameChange={(name) => {
+          setTeamAName(name);
+          localStorage.setItem("team-a-name", name);
+        }}
+        onTeamBNameChange={(name) => {
+          setTeamBName(name);
+          localStorage.setItem("team-b-name", name);
+        }}
       />
 
-      {/* ---------- Filter Bar — All Drills ---------- */}
-      {mode === "all" && (
-        <FilterBar pointFilter={pointFilter} setPointFilter={setPointFilter} />
-      )}
-
-      {/* ---------- Drill Grids ---------- */}
-      {mode === "all" && (
-        <div className="grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-          {soloCards
-            .filter((id) => !pointFilter || getCardValue(id) === pointFilter)
-            .map((id) => (
-              <Card
-                key={`all-${id}`}
-                team="solo"
-                id={id}
-                attempts={attempts}
-                recordAttempt={recordAttempt}
-                markDone={markDone}
-                setExpanded={setExpanded}
-              />
-            ))}
-        </div>
-      )}
-
-      {mode === "team" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
-          {["A", "B"].map((t) => (
-            <div key={t}>
-              <h2 className="text-xl mb-2">{t === "A" ? teamA : teamB}</h2>
-              {deal[`team${t}`]?.map((id) => (
-                <Card
-                  key={`${t}-${id}`}
-                  team={t}
-                  id={id}
-                  attempts={attempts}
-                  recordAttempt={recordAttempt}
-                  markDone={markDone}
-                  setExpanded={setExpanded}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {(mode === "solo" || mode === "fast") && (
-        <div className="grid gap-6 mt-4">
-          {soloCards.map((id) => (
+      {/* CARD GRID */}
+      <div
+        className={
+          mode === "solo"
+            ? "grid grid-cols-1 gap-6 mt-4"
+            : mode === "fast"
+              ? "grid grid-cols-1 gap-6 mt-4"
+              : mode === "team"
+                ? "grid grid-cols-2 gap-8 mt-4"
+                : mode === "random"
+                  ? "grid grid-cols-1 gap-6 mt-4"
+                  : mode === "all"
+                    ? "grid grid-cols-3 gap-6 mt-4"
+                    : "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-4"
+        }
+      >
+        {filteredCards.map((id, idx) => {
+          const team = mode === "team" ? (idx < 5 ? "A" : "B") : "A";
+          return (
             <Card
-              key={`solo-${id}`}
-              team="solo"
+              key={`${team}-${id}-${idx}`}
               id={id}
+              team={team}
               attempts={attempts}
               recordAttempt={recordAttempt}
               markDone={markDone}
               setExpanded={setExpanded}
+              mode={mode}
+              tip={tips[id]}
             />
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      {/* ---------- Overlays ---------- */}
       {expanded && (
         <ExpandedOverlay
           id={expanded.id}
           team={expanded.team}
+          attempts={attempts}
           recordAttempt={recordAttempt}
           markDone={markDone}
           onClose={() => setExpanded(null)}
+          totalScore={mode === "team" ? getScoreForTeam(expanded.team) : sessionTotal}
+          tips={tips}
+          setTips={setTips}
         />
       )}
 
@@ -328,7 +303,21 @@ export default function Page() {
         <HighScoresOverlay
           scores={scores}
           onClose={() => setShowHighScores(false)}
-          onClear={() => setScores(clearScores())}
+          onClear={() => {
+            localStorage.removeItem("scores");
+            setScores([]);
+            setShowHighScores(false);
+          }}
+        />
+      )}
+
+      {showRecentDrills && (
+        <RecentDrillsOverlay
+          onClose={() => setShowRecentDrills(false)}
+          onSelect={(id) => {
+            setExpanded({ id, team: "A" });
+            setShowRecentDrills(false);
+          }}
         />
       )}
 
@@ -336,23 +325,21 @@ export default function Page() {
         <HistoryOverlay
           scores={scores}
           onClose={() => setShowHistory(false)}
-          onClear={() => setScores(clearScores())}
-        />
-      )}
-
-      {showRecent && (
-        <RecentDrillsOverlay
-          onClose={() => setShowRecent(false)}
-          onSelect={(id) => {
-            setShowRecent(false);
-            setMode("solo");
-            setSoloCards([id]);
-            setAttempts({});
+          onClear={() => {
+            localStorage.removeItem("scores");
+            setScores([]);
+            setShowHistory(false);
           }}
         />
       )}
 
-      {showTips && <TipsManagerOverlay onClose={() => setShowTips(false)} />}
-    </div>
+      {showTips && (
+        <TipsManagerOverlay
+          onClose={() => setShowTips(false)}
+          tips={tips}
+          setTips={setTips}
+        />
+      )}
+    </main>
   );
 }

@@ -20,7 +20,7 @@ export default function ModeButtons({
         }`}
         onClick={onSolo}
       >
-        Solo (5)
+        Solo
       </button>
       <button
         className={`px-4 py-2 rounded ${
@@ -44,26 +44,31 @@ export default function ModeButtons({
         }`}
         onClick={onAll}
       >
-        All Drills
+        All Drills
       </button>
       <button
         className="px-4 py-2 rounded bg-amber-700"
         onClick={onRandom}
       >
-        Random Drill
+        Random Drill
       </button>
       <button
         className="px-4 py-2 rounded bg-amber-500"
         onClick={onRecent}
       >
-        Recent Drills
+        Recent Drills
       </button>
       <button
         className="px-4 py-2 rounded bg-blue-700"
-        onClick={onTips}
-    
+        onClick={onHighScores}
       >
-        High Scores
+        High Scores
+      </button>
+      <button
+        className="px-4 py-2 rounded bg-purple-700"
+        onClick={onTips}
+      >
+        Tips Manager
       </button>
       <button
         className="px-4 py-2 rounded bg-slate-700"

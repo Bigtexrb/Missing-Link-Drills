@@ -3,11 +3,8 @@
 import { useState, useEffect } from "react";
 import { loadTips, saveTips, getCardValue } from "./utils";
 
-export default function TipsManagerOverlay({ onClose }) {
-  const [tips, setTips] = useState({});
+export default function TipsManagerOverlay({ onClose, tips, setTips }) {
   const [search, setSearch] = useState("");
-
-  useEffect(() => setTips(loadTips()), []);
 
   function handleChange(id, text) {
     setTips((prev) => ({ ...prev, [id]: text }));
@@ -49,11 +46,11 @@ export default function TipsManagerOverlay({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 overflow-auto"
+      className="fixed inset-0 bg-black/95 z-50 flex justify-center items-start p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative bg-zinc-950 rounded-lg p-4 max-w-4xl w-full text-white overflow-y-auto"
+        className="relative bg-zinc-950 rounded-xl p-6 max-w-4xl w-full text-white my-8 shadow-2xl border border-zinc-800"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -100,28 +97,36 @@ export default function TipsManagerOverlay({ onClose }) {
 
         {/* Tips list */}
         <div className="grid sm:grid-cols-2 gap-4">
-          {Array.from({ length: 52 }, (_, i) => i + 1)
-            .filter((id) => !search || String(id).includes(search))
-            .map((id) => (
-              <div
-                key={id}
-                className="bg-zinc-900 rounded p-3 border border-zinc-800"
-              >
-                <h3 className="font-semibold text-emerald-400 mb-1 text-sm">
-                  Drill #{id} • {getCardValue(id)} pts
-                </h3>
-                <textarea
-                  value={tips[id] || ""}
-                  onChange={(e) => handleChange(id, e.target.value)}
-                  className="w-full h-32 bg-zinc-950 border border-zinc-700 rounded p-2 text-xs resize-none"
-                  placeholder="Write your tip here..."
-                />
-              </div>
-            ))}
+          {(() => {
+            const maxId = Math.max(52, ...Object.keys(tips).map(Number).filter(n => !isNaN(n)));
+            return Array.from({ length: maxId }, (_, i) => i + 1)
+              .filter((id) => !search || String(id).includes(search))
+              .map((id) => (
+                <div
+                  key={id}
+                  className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800 hover:border-emerald-500/30 transition-colors shadow-sm"
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-emerald-400 text-sm">
+                      Drill #{id}
+                    </h3>
+                    <span className="text-[10px] text-zinc-500 font-mono">
+                      {getCardValue(id)} PTS
+                    </span>
+                  </div>
+                  <textarea
+                    value={tips[id] || ""}
+                    onChange={(e) => handleChange(id, e.target.value)}
+                    className="w-full h-32 bg-zinc-950/50 border border-zinc-700/50 rounded-lg p-2.5 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 resize-none transition-all placeholder:text-zinc-700"
+                    placeholder="Strategy for this drill..."
+                  />
+                </div>
+              ));
+          })()}
         </div>
 
-        <div className="text-center text-sm text-zinc-500 mt-4">
-          Total drills: 52
+        <div className="text-center text-xs text-zinc-600 mt-8 border-t border-zinc-900 pt-4">
+          Total Entries: {Object.keys(tips).length || 52}
         </div>
       </div>
     </div>

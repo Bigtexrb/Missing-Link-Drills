@@ -1,124 +1,161 @@
-// ---------- Utility helpers ----------
+// =============================
+// STORAGE HELPERS
+// =============================
 
-// Compute card value by ID (Ross's ranges)
-export function getCardValue(id) {
+export function loadScores() {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("scores")) || [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveScores(scores) {
+  localStorage.setItem("scores", JSON.stringify(scores));
+}
+
+export function clearScores() {
+  localStorage.removeItem("scores");
+}
+
+export function loadTips() {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem("tips")) || {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveTips(tips) {
+  localStorage.setItem("tips", JSON.stringify(tips));
+}
+
+// =============================
+// SCORE HELPERS
+// =============================
+
+export function sortScoresByDateDesc(scores) {
+  return [...scores].sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+export function filterScoresByDays(scores, days) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return scores.filter(s => new Date(s.date).getTime() >= cutoff);
+}
+
+export function averageScore(scores) {
+  if (!scores || scores.length === 0) return 0;
+
+  const total = scores.reduce((sum, s) => {
+    const v = Number(s.score);
+    return sum + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  return Math.round((total / scores.length) * 10) / 10;
+}
+
+// =============================
+// DRILL / CARD HELPERS
+// =============================
+
+export function randomCards(count = 1, max = 25) {
+  const set = new Set();
+  while (set.size < count) {
+    set.add(Math.floor(Math.random() * max) + 1);
+  }
+  return Array.from(set);
+}
+
+export function getCardValue(cardId) {
+  const id = Number(cardId);
+
+  // 1-11 = 5 pts, 12-22 = 10 pts, 23-31 = 15 pts, 32-43 = 20 pts, 44-52 = 25 pts
   if (id >= 1 && id <= 11) return 5;
   if (id >= 12 && id <= 22) return 10;
   if (id >= 23 && id <= 31) return 15;
   if (id >= 32 && id <= 43) return 20;
   if (id >= 44 && id <= 52) return 25;
+  return 5; // default
+}
+
+// Score result for a single card attempt based on history
+export function computeCardScore(history, cardId) {
+  if (!history || history.length === 0) return 0;
+
+  const cardValue = getCardValue(cardId);
+  const id = Number(cardId);
+
+  // Special card #49 - "Three Ball Exercise"
+  if (id === 49) {
+    const makes = history.filter(h => h === "make").length;
+    const scratches = history.filter(h => h === "scratch").length;
+
+    if (scratches > 0) return -25;
+    if (makes === 3) return 25;
+    if (makes === 4) return 20;
+    if (makes > 4) return -10;
+    return 0;
+  }
+
+  // Rule: Any scratch = -15 pts immediately
+  if (history.includes("scratch")) return -15;
+
+  const makes = history.filter(h => h === "make").length;
+  const misses = history.filter(h => h === "miss").length;
+  const totalAttempts = history.length;
+
+  // 1st Attempt Handling
+  if (totalAttempts === 1) {
+    if (history[0] === "make") return cardValue;
+    return 0; // Miss or other (scratch handled above)
+  }
+
+  // 2nd Attempt Handling
+  if (totalAttempts === 2) {
+    if (history[1] === "make") {
+      // If 1st was also make -> 2x. If 1st was miss -> 1x.
+      return history[0] === "make" ? cardValue * 2 : cardValue;
+    }
+    if (history[1] === "miss") {
+      // Miss on 2nd attempt = -1x value (regardless of 1st)
+      return -cardValue;
+    }
+  }
+
+  // 3rd Attempt Handling (ONLY for 5pt cards)
+  if (cardValue === 5 && totalAttempts === 3) {
+    // Only reachable if 1st and 2nd were makes (UI should enforce this)
+    if (history[2] === "make") return 15; // 3x 5
+    if (history[2] === "miss") return -15;
+  }
+
+  // Fallback for unexpected states
+  if (makes >= 1 && misses === 0) {
+    return makes * cardValue;
+  }
+
   return 0;
 }
 
-// Return N random card IDs (1–52)
-export function randomCards(n) {
-  const ids = Array.from({ length: 52 }, (_, i) => i + 1);
-  for (let i = ids.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-  }
-  return ids.slice(0, n);
-}
+// Log one drill attempt
+export function logCardStat({
+  cardId,
+  score,
+  mode,
+  player,
+}) {
+  const scores = loadScores();
 
-// ---------- Local Storage Helpers ----------
-const SCORE_KEY = "pool-scores";
-const TIPS_KEY = "pool-tips";
-const STATS_KEY = "pool-card-stats";
+  scores.push({
+    id: crypto.randomUUID(),
+    cardId,
+    score,
+    mode,
+    player,
+    date: new Date().toISOString(),
+  });
 
-export function loadScores() {
-  return JSON.parse(localStorage.getItem(SCORE_KEY) || "[]");
-}
-export function saveScores(data) {
-  localStorage.setItem(SCORE_KEY, JSON.stringify(data));
-}
-export function clearScores() {
-  localStorage.setItem(SCORE_KEY, JSON.stringify([]));
-  return [];
-}
-export function loadTips() {
-  return JSON.parse(localStorage.getItem(TIPS_KEY) || "{}");
-}
-export function saveTips(data) {
-  localStorage.setItem(TIPS_KEY, JSON.stringify(data));
-}
-export function logCardStat(id, result) {
-  const stats = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
-  if (!stats[id]) stats[id] = { makes: 0, misses: 0, scratches: 0 };
-  if (result === "make") stats[id].makes++;
-  if (result === "miss") stats[id].misses++;
-  if (result === "scratch") stats[id].scratches++;
-  localStorage.setItem(STATS_KEY, JSON.stringify(stats));
-}
-export function getCardStats(id) {
-  const stats = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
-  return stats[id] || { makes: 0, misses: 0, scratches: 0 };
-}
-
-// ---------- Scoring ----------
-export function computeCardScore(history, value, mode, id) {
-  // --- Special handling for drill #49 ---
-  if (id === 49) {
-    let score = 0;
-    if (history.includes("three-shots")) score += 25;
-    else if (history.includes("four-shots")) score += 20;
-    else if (history.includes("over-four")) score -= 10;
-    else if (history.includes("scratch-49")) score -= 25;
-    return { score };
-  }
-
-  // --- Normal cards ---
-  let score = 0;
-  const f = history[0];
-  const s = history[1];
-  const t = history[2];
-  // SCRATCH anywhere
-  if (history.includes("Scratch")) {
-    score -= value;
-    return { score };
-  }
-
-  // First miss = no penalty, stop if you keep missing
-  if (f === "Miss") {
-    return { score: 0 };
-  }
-
-  // First make, second miss => lose points
-  if (f === "Made" && s === "Miss") {
-    score -= value;
-    return { score };
-  }
-
-  // First make, second make -> determine if 3rd allowed
-  if (f === "Made" && s === "Made") {
-    // Only 5‑pt cards can attempt third make
-    if (value === 5 && t === "Made") {
-      score += 20; // 3 in a row
-    } else {
-      score += value - 5; // second‑try success default
-    }
-    return { score };
-  }
-
-  // First try success only
-  if (f === "Made") {
-    score += value;
-  }
-
-  return { score };
-}
-
-// ---------- Average helpers ----------
-export function filterScoresByDays(scores, days) {
-  const cutoff = Date.now() - days * 86400000;
-  return scores.filter((s) => new Date(s.date).getTime() >= cutoff);
-}
-export function averageScore(scores) {
-  if (scores.length === 0) return 0;
-  const total = scores.reduce((a, b) => a + (b.score || 0), 0);
-  return Math.round(total / scores.length);
-}
-export function sortScoresByDateDesc(scores) {
-  return [...scores].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  saveScores(scores);
 }
